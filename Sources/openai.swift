@@ -19,7 +19,7 @@ func oneShot(apiKey: String, message: String, model: String, systemPrompt: Strin
 
     let query = ChatQuery(
         messages: [
-            .init(role: .system, content: "you're a helpful assistant")!,
+            .init(role: .system, content: systemPrompt)!,
             .init(role: .user, content: message)!
         ], model: model
     )
@@ -39,7 +39,7 @@ func chat(apiKey: String, model: String, systemPrompt: String) async {
 
     var query = ChatQuery(
         messages: [
-            .init(role: .system, content: "you're a helpful assistant")!,
+            .init(role: .system, content: systemPrompt)!,
         ], model: model
     )
 
