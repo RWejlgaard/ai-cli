@@ -1,0 +1,58 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger the workflow when a new tag is pushed
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Swift
+        uses: actions/setup-swift@v2
+        with:
+          swift-version: '5.9' # Replace with the desired Swift version
+
+      - name: Build for darwin-amd64
+        run: swift build --configuration release --arch x86_64
+
+      - name: Build for darwin-arm64
+        run: swift build --configuration release --arch arm64
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            Release ${{ github.ref }}
+            - Binaries for darwin-amd64
+            - Binaries for darwin-arm64
+
+      - name: Upload Binaries for darwin-amd64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: .build/x86_64-apple-macosx/release/ai
+          asset_name: ai-darwin-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Binaries for darwin-arm64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: .build/arm64-apple-macosx/release/ai
+          asset_name: ai-darwin-arm64
+          asset_content_type: application/octet-stream
