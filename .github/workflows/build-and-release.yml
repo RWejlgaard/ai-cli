@@ -2,8 +2,8 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*' # Trigger the workflow when a new tag is pushed
+    branches:
+      - master
 
 jobs:
   build-and-release:
@@ -13,10 +13,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up Swift
-        uses: actions/setup-swift@v2
-        with:
-          swift-version: '5.9' # Replace with the desired Swift version
+      # - name: Set up Swift
+      #   uses: actions/setup-swift@v2
+      #   with:
+      #     swift-version: '5.9' # Replace with the desired Swift version
 
       - name: Build for darwin-amd64
         run: swift build --configuration release --arch x86_64
