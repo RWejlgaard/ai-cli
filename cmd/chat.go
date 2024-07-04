@@ -7,12 +7,20 @@ import (
 	"context"
 	openai "github.com/sashabaranov/go-openai"
 	"errors"
+	"github.com/chzyer/readline"
 	"io"
 )
 
-func oneOff(client *openai.Client, model string, systemPrompt string, inputMessage string, verbose bool) {
+type Chat struct {
+	client *openai.Client
+	model string
+	systemPrompt string
+	verbose bool
+}
+
+func (c Chat) oneOff(inputMessage string) {
 	// Check if stdin is being piped in
-	fileInfo, err := os.Stdin.Stat()
+	fileInfo, _ := os.Stdin.Stat()
 	if fileInfo.Mode() & os.ModeCharDevice == 0 {
 
 		// Read from stdin
@@ -27,18 +35,18 @@ func oneOff(client *openai.Client, model string, systemPrompt string, inputMessa
 		inputMessage = fmt.Sprintf("%s\n\n```\n%s\n```", inputMessage, stdinString)
 	}
 
-	if verbose {
+	if c.verbose {
 		println("USER INPUT: ", inputMessage)
 	}
 
 	resp, err := client.CreateChatCompletionStream(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: model,
+			Model: c.model,
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role: "system",
-					Content: systemPrompt,
+					Content: c.systemPrompt,
 				},
 				{
 					Role: "user",
@@ -48,7 +56,6 @@ func oneOff(client *openai.Client, model string, systemPrompt string, inputMessa
 			Stream: true,
 		},
 	)
-	defer resp.Close()
 
 	if err != nil {
 		panic(err)
@@ -67,28 +74,25 @@ func oneOff(client *openai.Client, model string, systemPrompt string, inputMessa
 			print(msg.Choices[0].Delta.Content)
 		}
 	}
+	resp.Close()
 }
 
-func startSession(client *openai.Client, model string, systemPrompt string, verbose bool) {
+func (c Chat) startSession() {
 	messages := []openai.ChatCompletionMessage{
 		{
 			Role: "system",
-			Content: systemPrompt,
+			Content: c.systemPrompt,
 		},
 	}
-
-	var input string
 	
 	for {
-		input = ""
-		// Read input from the user
-		fmt.Print("\033[32mYou:\033[0m ")
-		
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		input = scanner.Text()
+		// Get input from the user
+		input, err := getInputFromUser(true)
+		if err != nil {
+			panic(err)
+		}
 
-		if verbose {
+		if c.verbose {
 			println("USER INPUT: ", input)
 		}
 
@@ -102,7 +106,7 @@ func startSession(client *openai.Client, model string, systemPrompt string, verb
 		resp, err := client.CreateChatCompletionStream(
 			context.Background(),
 			openai.ChatCompletionRequest{
-				Model: model,
+				Model: c.model,
 				Messages: messages,
 				Stream: true,
 			},
@@ -140,4 +144,29 @@ func startSession(client *openai.Client, model string, systemPrompt string, verb
 		println()
 
 	}
+}
+
+func getInputFromUser(colorEnabled bool) (string, error) {
+	// Create a readline instance
+	prompt := "\033[32mYou:\033[0m "
+	if !colorEnabled {
+		prompt = "You: "
+	}
+
+	rl, err := readline.New(prompt)
+	if err != nil {
+		return "", err
+	}
+	defer rl.Close()
+
+	// Read input from the user
+	line, err := rl.Readline()
+	if err == readline.ErrInterrupt {
+		os.Exit(0)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return line, nil
 }

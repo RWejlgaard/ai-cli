@@ -24,11 +24,17 @@ var rootCmd = &cobra.Command{
 	Short: "A command-line tool for interacting with OpenAI's GPT-4o model.",
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	Run: func(cmd *cobra.Command, args []string) { 
+	Run: func(cmd *cobra.Command, args []string) {
+		chat := Chat{
+			client: client,
+			model: model,
+			systemPrompt: systemPrompt,
+			verbose: verbose,
+		} 
 		if single != "" {
-			oneOff(client, model, systemPrompt, single, verbose)
+			chat.oneOff(single)
 		} else {
-			startSession(client, model, systemPrompt, verbose)
+			chat.startSession()
 		}
 	},
 }
