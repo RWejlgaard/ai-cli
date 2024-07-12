@@ -16,6 +16,8 @@ type Chat struct {
 	model string
 	systemPrompt string
 	verbose bool
+	quiet bool
+	noColor bool
 }
 
 func (c Chat) oneOff(inputMessage string) {
@@ -71,7 +73,7 @@ func (c Chat) oneOff(inputMessage string) {
 		}
 
 		if msg.Choices[0].Delta.Content != "" {
-			print(msg.Choices[0].Delta.Content)
+			os.Stdout.Write([]byte(msg.Choices[0].Delta.Content))
 		}
 	}
 	resp.Close()
@@ -87,7 +89,11 @@ func (c Chat) startSession() {
 	
 	for {
 		// Get input from the user
-		input, err := getInputFromUser(true)
+		prompt := "You: "
+		if c.quiet {
+			prompt = ""
+		}
+		input, err := getInputFromUser(prompt, c.noColor)
 		if err != nil {
 			panic(err)
 		}
@@ -118,8 +124,9 @@ func (c Chat) startSession() {
 
 		// Read the response from the API
 
-		println()
-		fmt.Println("\033[31mAssistant:\033[0m")
+		if !c.quiet {
+			os.Stdout.Write([]byte("\n\033[31mAssistant:\033[0m\n"))
+		}
 		assistantResponse := ""
 		for {
 			msg, err := resp.Recv()
@@ -137,20 +144,22 @@ func (c Chat) startSession() {
 			}
 			if msg.Choices[0].Delta.Content != "" {
 				assistantResponse = fmt.Sprintf("%s%s", assistantResponse, msg.Choices[0].Delta.Content)
-				print(msg.Choices[0].Delta.Content)
+				os.Stdout.Write([]byte(msg.Choices[0].Delta.Content))
 			}
 		}
-		println()
-		println()
+
+		os.Stdout.Write([]byte("\n"))
+		if !c.quiet {
+			os.Stdout.Write([]byte("\n"))
+		}
 
 	}
 }
 
-func getInputFromUser(colorEnabled bool) (string, error) {
+func getInputFromUser(prompt string, colorDisabled bool) (string, error) {
 	// Create a readline instance
-	prompt := "\033[32mYou:\033[0m "
-	if !colorEnabled {
-		prompt = "You: "
+	if !colorDisabled {
+		prompt = fmt.Sprintf("\033[32m%s\033[0m", prompt)
 	}
 
 	rl, err := readline.New(prompt)

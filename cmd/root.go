@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"os"
-
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
 )
@@ -16,6 +15,8 @@ var single string
 var systemPrompt string
 var model string
 var verbose bool
+var noColor bool
+var quiet bool
 var client *openai.Client
 
 // rootCmd represents the base command when called without any subcommands
@@ -30,6 +31,8 @@ var rootCmd = &cobra.Command{
 			model: model,
 			systemPrompt: systemPrompt,
 			verbose: verbose,
+			quiet: quiet,
+			noColor: noColor,
 		} 
 		if single != "" {
 			chat.oneOff(single)
@@ -48,22 +51,13 @@ func Execute() {
 	}
 }
 
-func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.ai.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	
-	// Option for setting the API key
+func init() {	
 	rootCmd.PersistentFlags().StringVarP(&apiKey, "api-key", "k", "$OPENAI_API_KEY", "OpenAI API key")
 	rootCmd.PersistentFlags().StringVarP(&single, "single", "s", "", "Prompt for a single response")
 	rootCmd.PersistentFlags().StringVarP(&systemPrompt, "system-prompt", "p", "", "Override the system prompt")
 	rootCmd.PersistentFlags().StringVarP(&model, "model", "m", "gpt-4o", "Model to use")
+	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "n", false, "Disable color output")
+	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Disable prompts and system messages")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 
 	if apiKey == "$OPENAI_API_KEY" {
