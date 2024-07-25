@@ -5,10 +5,11 @@ package cmd
 
 import (
 	"os"
+
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
-
 
 var apiKey string
 var single string
@@ -27,13 +28,13 @@ var rootCmd = &cobra.Command{
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
 		chat := Chat{
-			client: client,
-			model: model,
+			client:       client,
+			model:        model,
 			systemPrompt: systemPrompt,
-			verbose: verbose,
-			quiet: quiet,
-			noColor: noColor,
-		} 
+			verbose:      verbose,
+			quiet:        quiet,
+			noColor:      noColor,
+		}
 		if single != "" {
 			chat.oneOff(single)
 		} else {
@@ -51,14 +52,54 @@ func Execute() {
 	}
 }
 
-func init() {	
-	rootCmd.PersistentFlags().StringVarP(&apiKey, "api-key", "k", "$OPENAI_API_KEY", "OpenAI API key")
+func init() {
+	cobra.OnInitialize(initConfig)
+
+	rootCmd.PersistentFlags().StringP("api-key", "k", "", "OpenAI API key")
+	viper.BindPFlag("api-key", rootCmd.PersistentFlags().Lookup("api-key"))
+
 	rootCmd.PersistentFlags().StringVarP(&single, "single", "s", "", "Prompt for a single response")
-	rootCmd.PersistentFlags().StringVarP(&systemPrompt, "system-prompt", "p", "", "Override the system prompt")
-	rootCmd.PersistentFlags().StringVarP(&model, "model", "m", "gpt-4o", "Model to use")
-	rootCmd.PersistentFlags().BoolVarP(&noColor, "no-color", "n", false, "Disable color output")
-	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Disable prompts and system messages")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+
+	rootCmd.PersistentFlags().StringP("system-prompt", "p", "", "Override the system prompt")
+	viper.BindPFlag("system-prompt", rootCmd.PersistentFlags().Lookup("system-prompt"))
+
+	rootCmd.PersistentFlags().StringP("model", "m", "", "Model to use")
+	viper.BindPFlag("model", rootCmd.PersistentFlags().Lookup("model"))
+
+	rootCmd.PersistentFlags().BoolP("no-color", "n", false, "Disable color output")
+	viper.BindPFlag("no-color", rootCmd.PersistentFlags().Lookup("no-color"))
+
+	rootCmd.PersistentFlags().BoolP("quiet", "q", false, "Disable prompts and system messages")
+	viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
+
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Verbose output")
+	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+
+}
+
+func initConfig() {
+	viper.SetConfigName("ai-cli")         // name of config file (without extension)
+	viper.SetConfigType("yaml")           // REQUIRED if the config file does not have the extension in the name
+	viper.AddConfigPath("$HOME/.config/") // path to look for the config file in
+
+	viper.SetDefault("api-key", "$OPENAI_API_KEY")
+	viper.SetDefault("system-prompt", "You're a helpful AI assistant.")
+	viper.SetDefault("model", "gpt-4o")
+	viper.SetDefault("no-color", false)
+	viper.SetDefault("quiet", false)
+	viper.SetDefault("verbose", false)
+
+	err := viper.ReadInConfig()
+	if err == nil {
+		apiKey = viper.GetString("api-key")
+		systemPrompt = viper.GetString("system-prompt")
+		model = viper.GetString("model")
+		noColor = viper.GetBool("no-color")
+		quiet = viper.GetBool("quiet")
+		verbose = viper.GetBool("verbose")
+	} else {
+		viper.SafeWriteConfig()
+	}
 
 	if apiKey == "$OPENAI_API_KEY" {
 		apiKey = os.Getenv("OPENAI_API_KEY")
@@ -68,5 +109,3 @@ func init() {
 	client = openai.NewClient(apiKey)
 
 }
-
-

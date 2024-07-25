@@ -18,7 +18,7 @@ Flags:
 
 ## Screenshots
 
-## Conversation
+### Conversation
 
 ```bash
 ai
@@ -26,7 +26,7 @@ ai
 
 ![conversation mode](.img/conversation.png)
 
-## Override system prompt
+### Override system prompt
 
 ```bash
 ai --system-prompt "You're roleplaying as a linux machine. Only print the raw text"
@@ -34,10 +34,14 @@ ai --system-prompt "You're roleplaying as a linux machine. Only print the raw te
 
 ![override-system-prompt](.img/override-system-prompt.png)
 
-## Input from other programs
+### Input from other programs
 
 ```bash
 cat go.mod | ai -s "What libraries are used here?"
 ```
 
 ![pipe](.img/pipe.png)
+
+## Configuration
+
+Settings are written to a YAML config file at `$HOME/.config/ai-cli.yaml`.
