@@ -90,6 +90,11 @@ func initConfig() {
 	viper.SetDefault("verbose", false)
 
 	err := viper.ReadInConfig()
+	if err != nil {
+		viper.SafeWriteConfig()
+	}
+
+	err = viper.ReadInConfig()
 	if err == nil {
 		apiKey = viper.GetString("api-key")
 		systemPrompt = viper.GetString("system-prompt")
