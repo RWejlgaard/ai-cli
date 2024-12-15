@@ -4,6 +4,7 @@ Copyright © 2024 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -14,7 +15,7 @@ import (
 var apiKey string
 var single string
 var systemPrompt string
-var model string
+var modelName string
 var verbose bool
 var noColor bool
 var quiet bool
@@ -27,16 +28,17 @@ var rootCmd = &cobra.Command{
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		chat := Chat{
+		chat := &Chat{
 			client:       client,
-			model:        model,
+			model:        modelName,
 			systemPrompt: systemPrompt,
 			verbose:      verbose,
 			quiet:        quiet,
 			noColor:      noColor,
+			messages:     []openai.ChatCompletionMessage{},
 		}
 		if single != "" {
-			chat.oneOff(single)
+			fmt.Println(chat.getResponse(single))
 		} else {
 			chat.startSession()
 		}
@@ -84,7 +86,7 @@ func initConfig() {
 
 	viper.SetDefault("api-key", "$OPENAI_API_KEY")
 	viper.SetDefault("system-prompt", "You're a helpful AI assistant.")
-	viper.SetDefault("model", "gpt-4o")
+	viper.SetDefault("model", "gpt-3.5-turbo")
 	viper.SetDefault("no-color", false)
 	viper.SetDefault("quiet", false)
 	viper.SetDefault("verbose", false)
@@ -98,7 +100,7 @@ func initConfig() {
 	if err == nil {
 		apiKey = viper.GetString("api-key")
 		systemPrompt = viper.GetString("system-prompt")
-		model = viper.GetString("model")
+		modelName = viper.GetString("model")
 		noColor = viper.GetBool("no-color")
 		quiet = viper.GetBool("quiet")
 		verbose = viper.GetBool("verbose")

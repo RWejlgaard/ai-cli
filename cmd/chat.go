@@ -1,181 +1,113 @@
 package cmd
 
 import (
-	"bufio"
+	"context"
 	"fmt"
 	"os"
-	"context"
 	openai "github.com/sashabaranov/go-openai"
-	"errors"
-	"github.com/chzyer/readline"
-	"io"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type Chat struct {
-	client *openai.Client
-	model string
+	client       *openai.Client
+	model        string
 	systemPrompt string
-	verbose bool
-	quiet bool
-	noColor bool
+	verbose      bool
+	quiet        bool
+	noColor      bool
+	messages     []openai.ChatCompletionMessage
 }
 
-func (c Chat) oneOff(inputMessage string) {
-	// Check if stdin is being piped in
-	fileInfo, _ := os.Stdin.Stat()
-	if fileInfo.Mode() & os.ModeCharDevice == 0 {
+// New message type for streaming responses
+type streamMsg struct {
+	content string
+	done    bool
+}
 
-		// Read from stdin
-		stdinString := ""
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			stdinString = fmt.Sprintf("%s\n%s", stdinString, scanner.Text())
-		}
-		// remove the first newline
-		stdinString = stdinString[1:]
-
-		inputMessage = fmt.Sprintf("%s\n\n```\n%s\n```", inputMessage, stdinString)
-	}
-
+func (c *Chat) streamResponse(inputMessage string) (*openai.ChatCompletionStream, error) {
 	if c.verbose {
 		println("USER INPUT: ", inputMessage)
 	}
 
-	resp, err := client.CreateChatCompletionStream(
+	c.messages = append(c.messages, openai.ChatCompletionMessage{
+		Role:    "user",
+		Content: inputMessage,
+	})
+
+	stream, err := c.client.CreateChatCompletionStream(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: c.model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role: "system",
-					Content: c.systemPrompt,
-				},
-				{
-					Role: "user",
-					Content: inputMessage,
-				},
-			},
-			Stream: true,
+			Model:    c.model,
+			Messages: c.messages,
+			Stream:   true,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+type streamResponseMsg struct {
+	stream *openai.ChatCompletionStream
+	err    error
+}
+
+func (c *Chat) receiveStreamResponse(stream *openai.ChatCompletionStream) tea.Cmd {
+	return func() tea.Msg {
+		response, err := stream.Recv()
+		if err != nil {
+			stream.Close()
+			return streamMsg{content: "", done: true}
+		}
+		return streamMsg{content: response.Choices[0].Delta.Content, done: false}
+	}
+}
+
+func (c *Chat) getResponse(inputMessage string) string {
+	if c.verbose {
+		println("USER INPUT: ", inputMessage)
+	}
+
+	c.messages = append(c.messages, openai.ChatCompletionMessage{
+		Role:    "user",
+		Content: inputMessage,
+	})
+
+	resp, err := c.client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model:    c.model,
+			Messages: c.messages,
 		},
 	)
 
 	if err != nil {
-		panic(err)
+		return fmt.Sprintf("Error: %v", err)
 	}
 
-	for {
-		msg, err := resp.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			panic(err)
-		}
+	c.messages = append(c.messages, openai.ChatCompletionMessage{
+		Role:    "assistant",
+		Content: resp.Choices[0].Message.Content,
+	})
 
-		if msg.Choices[0].Delta.Content != "" {
-			os.Stdout.Write([]byte(msg.Choices[0].Delta.Content))
-		}
-	}
-	resp.Close()
+	return resp.Choices[0].Message.Content
 }
 
-func (c Chat) startSession() {
-	messages := []openai.ChatCompletionMessage{
+func (c *Chat) startSession() {
+	// Initialize chat history with system prompt
+	c.messages = []openai.ChatCompletionMessage{
 		{
-			Role: "system",
+			Role:    "system",
 			Content: c.systemPrompt,
 		},
 	}
-	
-	for {
-		// Get input from the user
-		prompt := "You: "
-		if c.quiet {
-			prompt = ""
-		}
-		input, err := getInputFromUser(prompt, c.noColor)
-		if err != nil {
-			panic(err)
-		}
 
-		if c.verbose {
-			println("USER INPUT: ", input)
-		}
-
-		// Add the user's message to the list of messages
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role: "user",
-			Content: input,
-		})
-
-		// Send the messages to the OpenAI API
-		resp, err := client.CreateChatCompletionStream(
-			context.Background(),
-			openai.ChatCompletionRequest{
-				Model: c.model,
-				Messages: messages,
-				Stream: true,
-			},
-		)
-		
-		if err != nil {
-			panic(err)
-		}
-
-		// Read the response from the API
-
-		if !c.quiet {
-			os.Stdout.Write([]byte("\n\033[31mAssistant:\033[0m\n"))
-		}
-		assistantResponse := ""
-		for {
-			msg, err := resp.Recv()
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					// fmt.Println("EOF!!!!")
-					messages = append(messages, openai.ChatCompletionMessage{
-						Role: "system",
-						Content: assistantResponse,
-					})
-					resp.Close()
-					break
-				}
-				panic(err)
-			}
-			if msg.Choices[0].Delta.Content != "" {
-				assistantResponse = fmt.Sprintf("%s%s", assistantResponse, msg.Choices[0].Delta.Content)
-				os.Stdout.Write([]byte(msg.Choices[0].Delta.Content))
-			}
-		}
-
-		os.Stdout.Write([]byte("\n"))
-		if !c.quiet {
-			os.Stdout.Write([]byte("\n"))
-		}
-
+	// Start the chat UI
+	p := tea.NewProgram(initialModel(c))
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error running program: %v", err)
+		os.Exit(1)
 	}
-}
-
-func getInputFromUser(prompt string, colorDisabled bool) (string, error) {
-	// Create a readline instance
-	if !colorDisabled {
-		prompt = fmt.Sprintf("\033[32m%s\033[0m", prompt)
-	}
-
-	rl, err := readline.New(prompt)
-	if err != nil {
-		return "", err
-	}
-	defer rl.Close()
-
-	// Read input from the user
-	line, err := rl.Readline()
-	if err == readline.ErrInterrupt {
-		os.Exit(0)
-	}
-	if err != nil {
-		return "", err
-	}
-
-	return line, nil
 }
