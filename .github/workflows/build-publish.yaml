@@ -1,0 +1,58 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          
+      - name: Create Git Tag
+        run: |
+          git tag ${{ github.event.inputs.version }}
+          git push origin ${{ github.event.inputs.version }}
+          
+      - name: Build Binaries
+        run: |
+          # Create builds directory
+          mkdir -p builds
+          
+          # Build for each OS/ARCH combination
+          for OS in linux freebsd darwin windows; do
+            for ARCH in amd64 arm64; do
+              output_name="ai-cli-${OS}-${ARCH}"
+              if [ "$OS" = "windows" ]; then
+                output_name="${output_name}.exe"
+              fi
+              
+              echo "Building for $OS/$ARCH..."
+              GOOS=$OS GOARCH=$ARCH go build -o "builds/${output_name}" .
+            done
+          done
+          
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: Release ${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            builds/ai-cli-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
