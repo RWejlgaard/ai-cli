@@ -111,3 +111,7 @@ func (c *Chat) startSession() {
 		os.Exit(1)
 	}
 }
+
+func (c *Chat) UpdateAPIKey(apiKey string) {
+	c.client = openai.NewClient(apiKey)
+}

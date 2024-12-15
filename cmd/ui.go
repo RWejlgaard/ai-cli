@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -53,6 +54,11 @@ var (
 	helpStyle = lipgloss.NewStyle().
 			Foreground(special).
 			PaddingLeft(2)
+
+	errorStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FF0000")).
+		PaddingLeft(2)
 )
 
 type chatModel struct {
@@ -69,6 +75,8 @@ type chatModel struct {
 	colorTrail         []string
 	showingModelSelect bool
 	modelSelector      list.Model
+	awaitingAPIKey     bool
+	hiddenAPIKey       string
 }
 
 type modelSelectModel struct {
@@ -167,9 +175,16 @@ func initialModel(chat *Chat) chatModel {
 		modelSelector: l,
 	}
 
-	// Add initial system message
+	// Add initial system messages
 	m.messages = append(m.messages, 
 		assistantStyle.Render("System: ") + fmt.Sprintf("Using %s (type /help for commands)", chat.model))
+
+	// Check if API key is not set
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		m.messages = append(m.messages,
+			errorStyle.Render("Warning: ") + "No OpenAI API key found! Please set your API key using the /set-api-key command")
+	}
+
 	m.viewport.SetContent(strings.Join(m.messages, "\n"+dividerStyle.Render(dividerChar)+"\n"))
 
 	return m
@@ -267,15 +282,17 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyEnter:
 			input := m.textarea.Value()
+			trimmedInput := strings.TrimSpace(input)
 
 			// Handle commands
-			switch strings.TrimSpace(input) {
+			switch trimmedInput {
 			case "/help":
 				helpText := `Available commands:
-• /help  - Show this help message
-• /model - Change the AI model
-• /clear - Clear conversation history
-• TAB    - Insert newline`
+• /help           - Show this help message
+• /model          - Change the AI model
+• /clear          - Clear conversation history
+• /set-api-key    - Set OpenAI API key
+• TAB             - Insert newline`
 				m.messages = append(m.messages, helpStyle.Render(helpText))
 				m.viewport.SetContent(strings.Join(m.messages, "\n"+dividerStyle.Render(dividerChar)+"\n"))
 				m.textarea.Reset()
@@ -292,6 +309,33 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.messages = []string{assistantStyle.Render("System: ") + "Conversation history cleared"}
 				m.viewport.SetContent(strings.Join(m.messages, "\n"+dividerStyle.Render(dividerChar)+"\n"))
 				m.textarea.Reset()
+				return m, nil
+
+			case "/set-api-key":
+				m.messages = append(m.messages, 
+					assistantStyle.Render("System: ") + "Please enter your OpenAI API key (input will be hidden):")
+				m.viewport.SetContent(strings.Join(m.messages, "\n"+dividerStyle.Render(dividerChar)+"\n"))
+				m.textarea.Reset()
+				m.textarea.Placeholder = "Enter API key (press Enter to submit)"
+				m.awaitingAPIKey = true
+				return m, nil
+			}
+
+			// Handle API key input
+			if m.awaitingAPIKey {
+				if m.hiddenAPIKey == "" {
+					m.messages = append(m.messages,
+						errorStyle.Render("Error: API key cannot be empty"))
+				} else {
+					m.chat.UpdateAPIKey(m.hiddenAPIKey)
+					m.messages = append(m.messages,
+						assistantStyle.Render("System: ") + "API key updated successfully")
+				}
+				m.viewport.SetContent(strings.Join(m.messages, "\n"+dividerStyle.Render(dividerChar)+"\n"))
+				m.textarea.Reset()
+				m.textarea.Placeholder = fmt.Sprintf("Using %s (type /model to change or /help for help) - Tab for newline", m.chat.model)
+				m.awaitingAPIKey = false
+				m.hiddenAPIKey = ""
 				return m, nil
 			}
 
@@ -313,6 +357,22 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.streaming = true
 				m.stream = stream
 				return m, m.chat.receiveStreamResponse(stream)
+			}
+
+		case tea.KeyRunes:
+			if m.awaitingAPIKey {
+				m.hiddenAPIKey += string(msg.Runes)
+				m.textarea.SetValue(strings.Repeat("*", len(m.hiddenAPIKey)))
+				return m, nil
+			}
+
+		case tea.KeyBackspace:
+			if m.awaitingAPIKey {
+				if len(m.hiddenAPIKey) > 0 {
+					m.hiddenAPIKey = m.hiddenAPIKey[:len(m.hiddenAPIKey)-1]
+					m.textarea.SetValue(strings.Repeat("*", len(m.hiddenAPIKey)))
+				}
+				return m, nil
 			}
 		}
 
