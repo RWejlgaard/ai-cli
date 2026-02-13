@@ -2,28 +2,27 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
-	"context"
-	openai "github.com/sashabaranov/go-openai"
-	"errors"
+
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/chzyer/readline"
-	"io"
 )
 
 type Chat struct {
-	client *openai.Client
-	model string
+	client       anthropic.Client
+	model        string
 	systemPrompt string
-	verbose bool
-	quiet bool
-	noColor bool
+	verbose      bool
+	quiet        bool
+	noColor      bool
 }
 
 func (c Chat) oneOff(inputMessage string) {
 	// Check if stdin is being piped in
 	fileInfo, _ := os.Stdin.Stat()
-	if fileInfo.Mode() & os.ModeCharDevice == 0 {
+	if fileInfo.Mode()&os.ModeCharDevice == 0 {
 
 		// Read from stdin
 		stdinString := ""
@@ -41,52 +40,45 @@ func (c Chat) oneOff(inputMessage string) {
 		println("USER INPUT: ", inputMessage)
 	}
 
-	resp, err := client.CreateChatCompletionStream(
+	stream := client.Messages.NewStreaming(
 		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: c.model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role: "system",
-					Content: c.systemPrompt,
-				},
-				{
-					Role: "user",
-					Content: inputMessage,
-				},
+		anthropic.MessageNewParams{
+			Model:     anthropic.Model(c.model),
+			MaxTokens: int64(4096),
+			System: []anthropic.TextBlockParam{
+				{Text: c.systemPrompt},
 			},
-			Stream: true,
+			Messages: []anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock(inputMessage)),
+			},
 		},
 	)
 
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		msg, err := resp.Recv()
+	message := anthropic.Message{}
+	for stream.Next() {
+		event := stream.Current()
+		err := message.Accumulate(event)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
 			panic(err)
 		}
 
-		if msg.Choices[0].Delta.Content != "" {
-			os.Stdout.Write([]byte(msg.Choices[0].Delta.Content))
+		switch eventVariant := event.AsAny().(type) {
+		case anthropic.ContentBlockDeltaEvent:
+			switch deltaVariant := eventVariant.Delta.AsAny().(type) {
+			case anthropic.TextDelta:
+				os.Stdout.Write([]byte(deltaVariant.Text))
+			}
 		}
 	}
-	resp.Close()
+
+	if err := stream.Err(); err != nil {
+		panic(err)
+	}
 }
 
 func (c Chat) startSession() {
-	messages := []openai.ChatCompletionMessage{
-		{
-			Role: "system",
-			Content: c.systemPrompt,
-		},
-	}
-	
+	messages := []anthropic.MessageParam{}
+
 	for {
 		// Get input from the user
 		prompt := "You: "
@@ -103,50 +95,50 @@ func (c Chat) startSession() {
 		}
 
 		// Add the user's message to the list of messages
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role: "user",
-			Content: input,
-		})
+		messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(input)))
 
-		// Send the messages to the OpenAI API
-		resp, err := client.CreateChatCompletionStream(
+		// Send the messages to the Anthropic API
+		stream := client.Messages.NewStreaming(
 			context.Background(),
-			openai.ChatCompletionRequest{
-				Model: c.model,
+			anthropic.MessageNewParams{
+				Model:     anthropic.Model(c.model),
+				MaxTokens: int64(4096),
+				System: []anthropic.TextBlockParam{
+					{Text: c.systemPrompt},
+				},
 				Messages: messages,
-				Stream: true,
 			},
 		)
-		
-		if err != nil {
-			panic(err)
-		}
 
 		// Read the response from the API
-
 		if !c.quiet {
 			os.Stdout.Write([]byte("\n\033[31mAssistant:\033[0m\n"))
 		}
 		assistantResponse := ""
-		for {
-			msg, err := resp.Recv()
+		accMessage := anthropic.Message{}
+		for stream.Next() {
+			event := stream.Current()
+			err := accMessage.Accumulate(event)
 			if err != nil {
-				if errors.Is(err, io.EOF) {
-					// fmt.Println("EOF!!!!")
-					messages = append(messages, openai.ChatCompletionMessage{
-						Role: "system",
-						Content: assistantResponse,
-					})
-					resp.Close()
-					break
-				}
 				panic(err)
 			}
-			if msg.Choices[0].Delta.Content != "" {
-				assistantResponse = fmt.Sprintf("%s%s", assistantResponse, msg.Choices[0].Delta.Content)
-				os.Stdout.Write([]byte(msg.Choices[0].Delta.Content))
+
+			switch eventVariant := event.AsAny().(type) {
+			case anthropic.ContentBlockDeltaEvent:
+				switch deltaVariant := eventVariant.Delta.AsAny().(type) {
+				case anthropic.TextDelta:
+					assistantResponse += deltaVariant.Text
+					os.Stdout.Write([]byte(deltaVariant.Text))
+				}
 			}
 		}
+
+		if err := stream.Err(); err != nil {
+			panic(err)
+		}
+
+		// Add assistant response to conversation history
+		messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(assistantResponse)))
 
 		os.Stdout.Write([]byte("\n"))
 		if !c.quiet {
