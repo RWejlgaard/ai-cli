@@ -6,7 +6,8 @@ package cmd
 import (
 	"os"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -18,12 +19,12 @@ var model string
 var verbose bool
 var noColor bool
 var quiet bool
-var client *openai.Client
+var client anthropic.Client
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "ai",
-	Short: "A command-line tool for interacting with OpenAI's GPT-4o model.",
+	Short: "A command-line tool for interacting with Anthropic's Claude model.",
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
@@ -55,7 +56,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringP("api-key", "k", "", "OpenAI API key")
+	rootCmd.PersistentFlags().StringP("api-key", "k", "", "Anthropic API key")
 	viper.BindPFlag("api-key", rootCmd.PersistentFlags().Lookup("api-key"))
 
 	rootCmd.PersistentFlags().StringVarP(&single, "single", "s", "", "Prompt for a single response")
@@ -82,9 +83,9 @@ func initConfig() {
 	viper.SetConfigType("yaml")           // REQUIRED if the config file does not have the extension in the name
 	viper.AddConfigPath("$HOME/.config/") // path to look for the config file in
 
-	viper.SetDefault("api-key", "$OPENAI_API_KEY")
+	viper.SetDefault("api-key", "$ANTHROPIC_API_KEY")
 	viper.SetDefault("system-prompt", "You're a helpful AI assistant.")
-	viper.SetDefault("model", "gpt-4o")
+	viper.SetDefault("model", "claude-opus-4-6")
 	viper.SetDefault("no-color", false)
 	viper.SetDefault("quiet", false)
 	viper.SetDefault("verbose", false)
@@ -106,11 +107,15 @@ func initConfig() {
 		viper.SafeWriteConfig()
 	}
 
-	if apiKey == "$OPENAI_API_KEY" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
+	if apiKey == "$ANTHROPIC_API_KEY" || apiKey == "" {
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
 
-	// Initialize the OpenAI client
-	client = openai.NewClient(apiKey)
+	// Initialize the Anthropic client
+	opts := []option.RequestOption{}
+	if apiKey != "" {
+		opts = append(opts, option.WithAPIKey(apiKey))
+	}
+	client = anthropic.NewClient(opts...)
 
 }
